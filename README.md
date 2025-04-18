@@ -1,4 +1,6 @@
-# ASCII File Import & Preview
+# ASCII Image Converter
+
+🎥 [▶ Try the Demo](https://rjtpp.github.io/ascii-pic/)
 
 A self-contained HTML application that lets you import an image or video file, configure ASCII rendering parameters, preview the output in real time, and save snapshots or recordings — all entirely in the browser with no external dependencies.
 
@@ -35,6 +37,11 @@ A self-contained HTML application that lets you import an image or video file, c
      - A **PNG** snapshot for images.
      - An **MP4** (or WebM) video for recordings.
    - Watch the progress bar for feedback during the export.
+
+
+## Related Projects
+
+If you’re looking for live ASCII webcam streaming, feel free to check out the companion project: [RJTPP/ascii-cam](https://github.com/rjtpp/ascii-cam)
 
 
 ## License
