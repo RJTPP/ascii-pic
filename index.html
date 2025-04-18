@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>ASCII File Converter</title>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{display:flex;flex-direction:column;height:100vh;background:#121212;color:#e0e0e0;font-family:monospace}
+    .controls{display:flex;flex-wrap:wrap;align-items:center;padding:10px;background:#1e1e1e;gap:1rem}
+    .controls h1{font-size:1.2rem;flex:1}
+    .controls label{display:flex;align-items:center;gap:.3rem;user-select:none}
+    .controls input[type="range"]{width:120px;-webkit-appearance:none;background:#444;height:4px;border-radius:2px;outline:none}
+    .controls input[type="range"]::-webkit-slider-thumb,
+    .controls input[type="range"]::-moz-range-thumb{width:12px;height:12px;background:#888;border-radius:50%;cursor:pointer;box-shadow:0 0 2px #000}
+    .controls .value{width:4ch;text-align:right}
+    .controls button{background:#2e2e2e;border:1px solid #444;padding:4px 8px;color:#e0e0e0;cursor:pointer;border-radius:4px}
+    .controls button:disabled{opacity:.5;cursor:not-allowed}
+    .controls button:hover:not(:disabled){background:#3e3e3e}
+    .ascii{flex:1;background:#000;color:#fff;padding:10px;overflow:auto;white-space:pre;line-height:1em;font-size:8px}
+    .hidden{display:none!important}
+    progress{width:160px;height:8px;appearance:none;background:#2e2e2e;border:1px solid #444;border-radius:4px}
+    progress::-webkit-progress-bar{background:#2e2e2e;border-radius:4px}
+    progress::-webkit-progress-value{background:#888;border-radius:4px}
+    progress::-moz-progress-bar{background:#888;border-radius:4px}
+    #canvas,#exportCanvas{display:none}
+  </style>
+</head>
+<body>
+  <div class="controls">
+    <h1>ASCII File Converter</h1>
+    <label>
+      <input type="file" id="fileInput" accept="image/*,video/*">
+    </label>
+    <label>
+      Width:
+      <input type="range" id="widthControl" min="80" max="800" step="1">
+    </label>
+    <span class="value" id="widthValue">—</span>
+    <label>
+      Contrast:
+      <input type="range" id="contrastControl" min="0.5" max="2" step="0.01" value="1">
+    </label>
+    <span class="value" id="contrastValue">1.00</span>
+    <label>
+      <input type="checkbox" id="colorToggle"> Color
+    </label>
+    <button id="playPauseBtn" class="hidden" disabled>Play</button>
+    <button id="saveBtn" disabled>Save</button>
+    <progress id="exportProgress" value="0" max="1" class="hidden"></progress>
+  </div>
+
+  <pre class="ascii" id="ascii"></pre>
+  <canvas id="canvas"></canvas>
+  <canvas id="exportCanvas"></canvas>
+
+<script>
+(()=>{
+  const fileInput       = document.getElementById('fileInput');
+  const widthSlider     = document.getElementById('widthControl');
+  const widthLabel      = document.getElementById('widthValue');
+  const contrastSlider  = document.getElementById('contrastControl');
+  const contrastLabel   = document.getElementById('contrastValue');
+  const colorToggle     = document.getElementById('colorToggle');
+  const playPauseBtn    = document.getElementById('playPauseBtn');
+  const saveBtn         = document.getElementById('saveBtn');
+  const progressEl      = document.getElementById('exportProgress');
+  const asciiEl         = document.getElementById('ascii');
+  const canvas          = document.getElementById('canvas');
+  const ctx             = canvas.getContext('2d');
+  const exportCanvas    = document.getElementById('exportCanvas');
+  const ectx            = exportCanvas.getContext('2d');
+
+  const asciiChars = ['@','#','*','=',':','.',' '];
+  const charAspect = 0.5;
+  const fontSize   = 8;
+  ectx.font = `${fontSize}px monospace`;
+  const charWidth  = ectx.measureText('M').width;
+  const charHeight = fontSize;
+
+  let fileType = null, image = null, video = null, rafId = null;
+
+  function lockConfig(on){
+    [widthSlider, contrastSlider, colorToggle].forEach(c=>c.disabled = on);
+  }
+
+  function renderFrame(srcW, srcH, draw){
+    const baseW    = +widthSlider.value;
+    const contrast = +contrastSlider.value;
+    const outW     = baseW;
+    const outH     = Math.floor((srcH/srcW)*outW*charAspect);
+
+    canvas.width       = outW;
+    canvas.height      = outH;
+    exportCanvas.width = Math.ceil(outW*charWidth);
+    exportCanvas.height= Math.ceil(outH*charHeight);
+
+    draw(outW, outH);
+    const img = ctx.getImageData(0,0,outW,outH).data;
+
+    ectx.fillStyle    = '#000';
+    ectx.fillRect(0,0,exportCanvas.width,exportCanvas.height);
+    ectx.font         = `${fontSize}px monospace`;
+    ectx.textBaseline = 'top';
+
+    if (colorToggle.checked) {
+      let html = '';
+      for(let y=0;y<outH;y++){
+        for(let x=0;x<outW;x++){
+          const i = (y*outW + x)*4;
+          let L = ((0.299*img[i] + 0.587*img[i+1] + 0.114*img[i+2])/255 - 0.5)*contrast + 0.5;
+          L = Math.max(0, Math.min(1, L));
+          const ch  = asciiChars[asciiChars.length-1 - Math.floor(L*(asciiChars.length-1))];
+          const rgb = `rgb(${img[i]},${img[i+1]},${img[i+2]})`;
+          html += `<span style="color:${rgb}">${ch}</span>`;
+          ectx.fillStyle = rgb;
+          ectx.fillText(ch, x*charWidth, y*charHeight);
+        }
+        html += '<br>';
+      }
+      asciiEl.innerHTML = html;
+    } else {
+      let txt = '';
+      for(let y=0;y<outH;y++){
+        for(let x=0;x<outW;x++){
+          const i = (y*outW + x)*4;
+          let L = ((0.299*img[i] + 0.587*img[i+1] + 0.114*img[i+2])/255 - 0.5)*contrast + 0.5;
+          L = Math.max(0, Math.min(1, L));
+          const ch = asciiChars[asciiChars.length-1 - Math.floor(L*(asciiChars.length-1))];
+          txt += ch;
+          ectx.fillStyle = '#fff';
+          ectx.fillText(ch, x*charWidth, y*charHeight);
+        }
+        txt += '\n';
+      }
+      asciiEl.textContent = txt;
+    }
+  }
+
+  function displayImage(){
+    renderFrame(image.naturalWidth, image.naturalHeight, (w,h)=>ctx.drawImage(image,0,0,w,h));
+  }
+
+  function displayVideo(){
+    if (video.paused || video.ended) {
+      cancelAnimationFrame(rafId);
+      return;
+    }
+    renderFrame(video.videoWidth, video.videoHeight, (w,h)=>ctx.drawImage(video,0,0,w,h));
+    rafId = requestAnimationFrame(displayVideo);
+  }
+
+  widthSlider.addEventListener('input',()=>{
+    widthLabel.textContent = widthSlider.value;
+    if (fileType==='image') displayImage();
+  });
+  contrastSlider.addEventListener('input',()=>{
+    contrastLabel.textContent = +contrastSlider.value;
+    if (fileType==='image') displayImage();
+  });
+  colorToggle.addEventListener('change', ()=> fileType==='image' && displayImage());
+
+  playPauseBtn.addEventListener('click', ()=>{
+    if (video.paused) {
+      video.play();
+      playPauseBtn.disabled = true;
+      video.addEventListener('playing', ()=>{
+        saveBtn.disabled   = false;
+        playPauseBtn.disabled = false;
+      }, { once: true });
+      displayVideo();
+    } else {
+      video.pause();
+      saveBtn.disabled = true;
+    }
+  });
+
+  // --- Full‑length video export handler ---
+  saveBtn.addEventListener('click', () => {
+    if (fileType === 'image') {
+      exportCanvas.toBlob(blob => {
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = `ascii-${Date.now()}.png`;
+        link.click();
+      });
+      return;
+    }
+    if (fileType !== 'video') return;
+
+    const candidates = [
+      'video/webm;codecs=vp8',
+      'video/webm;codecs=vp9',
+      'video/webm'
+    ];
+    const mimeType = candidates.find(m => MediaRecorder.isTypeSupported(m)) || '';
+
+    const recStream = exportCanvas.captureStream(30);
+    const recorder  = mimeType
+      ? new MediaRecorder(recStream, { mimeType })
+      : new MediaRecorder(recStream);
+
+    const chunks = [];
+    recorder.ondataavailable = e => {
+      if (e.data.size) chunks.push(e.data);
+    };
+    recorder.onstop = () => {
+      const blob = new Blob(chunks, { type: mimeType || 'video/webm' });
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = `ascii-${Date.now()}.webm`;
+      link.click();
+      progressEl.classList.add('hidden');
+      lockConfig(false);
+      playPauseBtn.disabled = false;
+      saveBtn.disabled = false;
+    };
+
+    video.pause();
+    video.currentTime = 0;
+    lockConfig(true);
+    playPauseBtn.disabled = true;
+    saveBtn.disabled = true;
+    progressEl.classList.remove('hidden');
+    progressEl.value = 0;
+
+    const updateProgress = () => {
+      progressEl.value = video.currentTime / video.duration;
+    };
+    video.addEventListener('timeupdate', updateProgress);
+
+    video.addEventListener('ended', () => {
+      recorder.stop();
+      video.removeEventListener('timeupdate', updateProgress);
+    }, { once: true });
+
+    recorder.start(1000);
+    video.play();
+  });
+
+  fileInput.addEventListener('change', ()=>{
+    if (!fileInput.files.length) return;
+    const file = fileInput.files[0];
+
+    saveBtn.disabled = true;
+    cancelAnimationFrame(rafId);
+
+    if (file.type.startsWith('image')) {
+      fileType = 'image';
+      playPauseBtn.classList.add('hidden');
+      image = new Image();
+      image.onload = ()=>{
+        widthSlider.max = image.naturalWidth;
+        displayImage();
+        saveBtn.disabled = false;
+      };
+      image.src = URL.createObjectURL(file);
+      [widthSlider, contrastSlider, colorToggle].forEach(c=>c.disabled=false);
+    }
+    else if (file.type.startsWith('video')) {
+      fileType = 'video';
+      [widthSlider, contrastSlider, colorToggle].forEach(c=>c.disabled=false);
+      video = document.createElement('video');
+      video.src = URL.createObjectURL(file);
+      video.muted = true; video.playsInline = true;
+
+      video.addEventListener('loadedmetadata', ()=>{
+        widthSlider.max = video.videoWidth;
+        playPauseBtn.disabled = false;
+        playPauseBtn.classList.remove('hidden');
+        playPauseBtn.textContent = 'Play';
+        displayVideo();
+      });
+      video.addEventListener('play', ()=> lockConfig(true));
+      video.addEventListener('pause', ()=> lockConfig(false));
+    }
+  });
+
+  // initialize defaults
+  widthSlider.value       = 150; widthLabel.textContent    = 150;
+  contrastSlider.value    = 1;   contrastLabel.textContent = '1.00';
+  [widthSlider, contrastSlider, colorToggle, playPauseBtn, saveBtn]
+    .forEach(c=>c.disabled=true);
+})();
+</script>
+</body>
+</html>
