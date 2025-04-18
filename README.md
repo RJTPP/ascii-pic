@@ -35,7 +35,7 @@ A self-contained HTML application that lets you import an image or video file, c
 4. **Save**
    - Click **Save** to download:
      - A **PNG** snapshot for images.
-     - An **MP4** (or WebM) video for recordings.
+     - An **WebM** video for recordings.
    - Watch the progress bar for feedback during the export.
 
 
